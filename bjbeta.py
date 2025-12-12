@@ -1,0 +1,415 @@
+
+import tkinter as tk
+from tkinter import messagebox
+import random
+
+# mõõdud ja default algussaldo
+START_BALANCE = 1000
+CARD_WIDTH, CARD_HEIGHT = 72, 100
+TABLE_WIDTH, TABLE_HEIGHT = 980, 1100
+
+# kaardid
+suits = ['♥', '♦', '♣', '♠']
+ranks = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A']
+values = {
+    '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9,
+    '10': 10, 'J': 10, 'Q': 10, 'K': 10, 'A': 11
+}
+
+#kaardipakkide loomine
+def create_deck(num_decks=6):
+    deck = []
+    for _ in range(num_decks):
+        for s in suits:
+            for r in ranks:
+                deck.append((r, s))
+    random.shuffle(deck)
+    return deck
+
+#kaardi väärtus
+def card_value(card):
+    return values[card[0]]
+
+#käe väärtus arvestades ässadega
+def hand_value(hand):
+    total = 0
+    aces = 0
+    for c in hand:
+        total += card_value(c)
+        if c[0] == 'A':
+            aces += 1
+    while total > 21 and aces > 0:
+        total -= 10
+        aces -= 1
+    return total
+
+#blackjacki saamine 
+def is_blackjack(hand):
+    return len(hand) == 2 and hand_value(hand) == 21
+
+#kas saab splitida (kui mõlemad on väärt 10 või on samad
+def can_split(hand):
+    r1, s1 = hand[0]
+    r2, s2 = hand[1]
+    tens = ['10', 'J', 'Q', 'K']
+    return r1 == r2 or (r1 in tens and r2 in tens)
+
+#mäng ise
+class BlackjackGame:
+    def __init__(self, root):
+        self.root = root
+        root.title("Blackjack - Õppija Versioon")
+        root.resizable(False, False)
+
+        self.balance = START_BALANCE
+        self.deck = create_deck()
+        self.in_round = False
+        
+        #käed, vajalik splitide jaoks
+        self.player_hands = []  
+        self.active_hand = 0
+        self.dealer_hand = []
+
+        #UI
+        self.canvas = tk.Canvas(root, width=TABLE_WIDTH, height=TABLE_HEIGHT, bg="#0b5f0b")
+        self.canvas.pack()
+
+        #saldo ja panus
+        self.balance_text = self.canvas.create_text(TABLE_WIDTH//2, 30, text=f"Saldo: {self.balance}€", fill="white", font=("Arial", 22, "bold"))
+        self.bet_label = tk.Label(root, text="Panus:", font=("Arial", 12))
+        self.bet_entry = tk.Entry(root, width=8)
+        self.bet_entry.insert(0, "10")
+        self.canvas.create_window(100, TABLE_HEIGHT - 40, window=self.bet_label)
+        self.canvas.create_window(170, TABLE_HEIGHT - 40, window=self.bet_entry)
+        
+        #algussaldo sisestus
+        self.start_balance_label = tk.Label(root, text="Algussaldo:", font=("Arial", 12))
+        self.start_balance_entry = tk.Entry(root, width=8)
+        self.start_balance_entry.insert(0, str(START_BALANCE))
+        self.canvas.create_window(100, TABLE_HEIGHT - 75, window=self.start_balance_label)
+        self.canvas.create_window(170, TABLE_HEIGHT - 75, window=self.start_balance_entry)
+
+        #nupud
+        self.deal_button = tk.Button(root, text="Jaga kaardid", width=12, command=self.start_round)
+        self.hit_button = tk.Button(root, text="Võta kaart", width=12, command=self.hit)
+        self.stand_button = tk.Button(root, text="Seisa", width=12, command=self.stand)
+        self.double_button = tk.Button(root, text="Duubelda", width=12, command=self.double)
+        self.split_button = tk.Button(root, text="Poolita", width=12, command=self.split)
+
+        self.canvas.create_window(330, TABLE_HEIGHT - 40, window=self.deal_button)
+        self.canvas.create_window(430, TABLE_HEIGHT - 40, window=self.hit_button)
+        self.canvas.create_window(530, TABLE_HEIGHT - 40, window=self.stand_button)
+        self.canvas.create_window(630, TABLE_HEIGHT - 40, window=self.double_button)
+        self.canvas.create_window(730, TABLE_HEIGHT - 40, window=self.split_button)
+
+        # dealeri ja mängija sildid
+        self.canvas.create_text(TABLE_WIDTH//2, 60, text="DIILER", fill="white", font=("Arial", 20, "bold"))
+        self.canvas.create_text(TABLE_WIDTH//2, 290, text="MÄNGIJA", fill="white", font=("Arial", 20, "bold"))
+
+        # väärtuste sildid
+        self.dealer_value_text = self.canvas.create_text(TABLE_WIDTH//2, 90, text="", fill="white", font=("Arial", 19, "bold"))
+        self.player_value_text = self.canvas.create_text(TABLE_WIDTH//2, 320, text="", fill="white", font=("Arial", 19, "bold"))
+
+        self.update_ui()
+#kaartide võtmine, loomine
+    def draw_card(self, x, y, card, hidden=False, tag="card"):
+        rank, suit = card
+        if hidden:
+            self.canvas.create_rectangle(x, y, x + CARD_WIDTH, y + CARD_HEIGHT, fill="#0033aa", outline="white", width=3, tags=tag)
+            self.canvas.create_text(x + CARD_WIDTH//2, y + CARD_HEIGHT//2, text="■", fill="white", font=("Arial", 28), tags=tag)
+            return
+
+        color = "red" if suit in ['♥', '♦'] else "black"
+        self.canvas.create_rectangle(x, y, x + CARD_WIDTH, y + CARD_HEIGHT, fill="white", outline="black", width=2, tags=tag)
+        self.canvas.create_text(x + 8, y + 8, anchor="nw", text=f"{rank}{suit}", fill=color, font=("Arial", 14, "bold"), tags=tag)
+        self.canvas.create_text(x + CARD_WIDTH - 8, y + CARD_HEIGHT - 8, anchor="se", text=f"{rank}{suit}", fill=color, font=("Arial", 14, "bold"), tags=tag)
+
+    def update_ui(self):
+        self.canvas.delete("card")
+        self.canvas.itemconfig(self.balance_text, text=f"Saldo: {self.balance}€")
+
+        #diileri kaardi võtmine
+        dx = TABLE_WIDTH // 2
+        start_y = 110
+        if not self.dealer_hand:
+            self.canvas.itemconfig(self.dealer_value_text, text="Diiler: -")
+        else:
+            start_x = dx - (len(self.dealer_hand) * (CARD_WIDTH + 10)) // 2
+            for i, card in enumerate(self.dealer_hand):
+                hide = self.in_round and i == 1
+                self.draw_card(start_x + i*(CARD_WIDTH + 10), start_y, card, hidden=hide)
+
+            if self.in_round:
+                first_card_val = card_value(self.dealer_hand[0])
+                self.canvas.itemconfig(self.dealer_value_text, text=f"Diiler: {first_card_val} + ?")
+            else:
+                self.canvas.itemconfig(self.dealer_value_text, text=f"Diiler: {hand_value(self.dealer_hand)}")
+
+        # mängija kaardi võtmine
+        if not self.player_hands:
+            self.canvas.itemconfig(self.player_value_text, text="Mängija: -")
+            return
+
+        base_y = 350
+        spacing = 120
+
+        for i, hand in enumerate(self.player_hands):
+            y = base_y + i*spacing
+            if i == self.active_hand and self.in_round:
+                self.canvas.create_rectangle(60, y - 10, TABLE_WIDTH - 60, y + CARD_HEIGHT + 10, outline="#ffd24d", width=4, tags="card")
+
+            start_x = TABLE_WIDTH//2 - (len(hand['cards']) * (CARD_WIDTH + 10)) // 2
+            for j, card in enumerate(hand['cards']):
+                self.draw_card(start_x + j*(CARD_WIDTH + 10), y, card)
+            #staatused mängu seisu jaoks
+            val = hand_value(hand['cards'])
+            status = []
+            if is_blackjack(hand['cards']):
+                status.append("BLACKJACK")
+            if val > 21:
+                status.append("LÄBI")
+            if hand.get('stood', False):
+                status.append("SEISAB")
+            if hand.get('doubled', False):
+                status.append("DUUBEL")
+
+            info = ", ".join(status)
+
+            self.canvas.create_text(80, y + CARD_HEIGHT//2, anchor="w",
+                                    text=f"Käsi {i+1} | Panus: {hand['bet']}€   {info}", fill="white", font=("Arial", 12, "bold"), tags="card")
+            self.canvas.create_text(TABLE_WIDTH - 120, y + CARD_HEIGHT//2, anchor="e",
+                                    text=f"Väärtus: {val}", fill="white", font=("Arial", 14, "bold"), tags="card")
+
+        #käe väärtuse näitamine
+        val_active = hand_value(self.player_hands[self.active_hand]['cards'])
+        self.canvas.itemconfig(self.player_value_text, text=f"Mängija: {val_active}")
+
+        
+        self.update_buttons()
+    #nupud ei ole aktiivsed kui need ei tohiks olla
+    def update_buttons(self):
+        if not self.in_round:
+            self.hit_button.config(state="disabled")
+            self.stand_button.config(state="disabled")
+            self.double_button.config(state="disabled")
+            self.split_button.config(state="disabled")
+            return
+
+        hand = self.player_hands[self.active_hand]
+        val = hand_value(hand['cards'])
+
+        if hand.get('stood', False) or val > 21 or is_blackjack(hand['cards']):
+            self.hit_button.config(state="disabled")
+            self.stand_button.config(state="disabled")
+            self.double_button.config(state="disabled")
+            self.split_button.config(state="disabled")
+            return
+
+        self.hit_button.config(state="normal")
+        self.stand_button.config(state="normal")
+
+        #double tohib juhtuda ainult siis kui kaarte on 2 ja raha on piisavalt
+        if len(hand['cards']) == 2 and self.balance >= hand['bet']:
+            self.double_button.config(state="normal")
+        else:
+            self.double_button.config(state="disabled")
+
+        #splitiga sama lugu, aga kaardid peavad sama väärtusega olema ja üle 4 käe ei saa
+        if len(hand['cards']) == 2 and can_split(hand['cards']) and self.balance >= hand['bet'] and len(self.player_hands) < 4:
+            self.split_button.config(state="normal")
+        else:
+            self.split_button.config(state="disabled")
+    #raundi funktsioon
+    def start_round(self):
+        #algussaldo panemine, tohib teha ainult enne esimest mängu
+        if not hasattr(self, "start_balance_locked"):
+            self.start_balance_locked = False
+
+        if not self.start_balance_locked:
+            try:
+                new_balance = int(self.start_balance_entry.get())
+                if new_balance > 0:
+                    self.balance = new_balance
+                    self.start_balance_locked = True
+                    self.start_balance_entry.config(state="disabled")
+            except:
+                messagebox.showerror("Viga", "Algussaldo peab olema number.")
+                return
+    
+        if self.in_round:
+            messagebox.showinfo("Info", "Voor on juba käimas.")
+            return
+
+        try:
+            bet = int(self.bet_entry.get())
+        except:
+            messagebox.showerror("Viga", "Vale panus.")
+            return
+
+        if bet <= 0:
+            messagebox.showerror("Viga", "Panus peab olema suurem kui 0.")
+            return
+        if bet > self.balance:
+            messagebox.showerror("Viga", "Sul ei ole piisavalt raha.")
+            return
+
+        self.balance -= bet
+        #uus pakk kui pakis on vähe kaarte
+        if len(self.deck) < 20:  
+            self.deck = create_deck()
+
+        self.player_hands = [{'cards': [self.deck.pop(), self.deck.pop()], 'bet': bet}]
+        self.active_hand = 0
+        self.dealer_hand = [self.deck.pop(), self.deck.pop()]
+        self.in_round = True
+
+        #kas on blackjack, vaatab ka dealerit
+        player_bj = is_blackjack(self.player_hands[0]['cards'])
+        dealer_bj = is_blackjack(self.dealer_hand)
+        #mõlemal blackjack (harv harv juhus)
+        if player_bj and dealer_bj:
+            self.balance += bet
+            self.in_round = False
+            self.update_ui()
+            messagebox.showinfo("Tulemused", "Mõlemal blackjack, viik!")
+            return
+        #blackjacki saamise tagajärg
+        if player_bj:
+            self.balance += int(bet * 1.5)
+            self.in_round = False
+            self.update_ui()
+            messagebox.showinfo("Tulemused", "BLACKJACK! Sa võitsid!")
+            return
+        if dealer_bj:
+            self.in_round = False
+            self.update_ui()
+            messagebox.showinfo("Tulemused", "Diileril on blackjack. Sa kaotasid.")
+            return
+
+        self.update_ui()
+    #hitimine
+    def hit(self):
+        if not self.in_round:
+            return
+        hand = self.player_hands[self.active_hand]
+        if hand.get('stood', False):
+            return
+
+        hand['cards'].append(self.deck.pop())
+        val = hand_value(hand['cards'])
+        if val > 21:
+            hand['stood'] = True
+            self.next_hand()
+        elif val == 21:
+            hand['stood'] = True
+            self.next_hand()
+        self.update_ui()
+    #standimine
+    def stand(self):
+        if not self.in_round:
+            return
+        hand = self.player_hands[self.active_hand]
+        hand['stood'] = True
+        self.next_hand()
+        self.update_ui()
+    #double
+    def double(self):
+        if not self.in_round:
+            return
+        hand = self.player_hands[self.active_hand]
+        if len(hand['cards']) != 2:
+            return
+        if self.balance < hand['bet']:
+            return
+
+        self.balance -= hand['bet']
+        hand['bet'] *= 2
+        hand['cards'].append(self.deck.pop())
+        hand['doubled'] = True
+        hand['stood'] = True
+        self.next_hand()
+        self.update_ui()
+    #split
+    def split(self):
+        if not self.in_round:
+            return
+        hand = self.player_hands[self.active_hand]
+        if len(hand['cards']) != 2:
+            return
+        if not can_split(hand['cards']):
+            return
+        if self.balance < hand['bet']:
+            return
+        if len(self.player_hands) >= 4:
+            return
+
+        self.balance -= hand['bet']
+
+        c1 = hand['cards'][0]
+        c2 = hand['cards'][1]
+
+        #loob kaks uut kätt spliti tagajärjel
+        new_hand1 = {'cards': [c1, self.deck.pop()], 'bet': hand['bet']}
+        new_hand2 = {'cards': [c2, self.deck.pop()], 'bet': hand['bet']}
+
+        self.player_hands[self.active_hand:self.active_hand+1] = [new_hand1, new_hand2]
+
+        self.update_ui()
+
+    def next_hand(self):
+        #järgmise käe peale edasi, mis splitiga tekkis
+        for i in range(self.active_hand + 1, len(self.player_hands)):
+            if not self.player_hands[i].get('stood', False) and hand_value(self.player_hands[i]['cards']) <= 21:
+                self.active_hand = i
+                self.update_ui()
+                return
+        for i in range(0, self.active_hand):
+            if not self.player_hands[i].get('stood', False) and hand_value(self.player_hands[i]['cards']) <= 21:
+                self.active_hand = i
+                self.update_ui()
+                return
+        #diiler mängib kui mängija enam liigutusi ei tee
+        self.in_round = False
+        self.dealer_play()
+        self.check_winner()
+    #diiler võtab kui tal on vähem kui 17
+    def dealer_play(self):
+        while hand_value(self.dealer_hand) < 17:
+            self.dealer_hand.append(self.deck.pop())
+        self.update_ui()
+    #võitja kontrollimine
+    def check_winner(self):
+        dealer_val = hand_value(self.dealer_hand)
+        results = []
+        for i, hand in enumerate(self.player_hands):
+            val = hand_value(hand['cards'])
+            bet = hand['bet']
+
+            if val > 21:
+                results.append(f"Käsi {i+1}: Kaotas (ületas 21).")
+            elif dealer_val > 21:
+                self.balance += bet * 2
+                results.append(f"Käsi {i+1}: Võitis! Diiler läks üle 21.")
+            elif is_blackjack(hand['cards']) and not is_blackjack(self.dealer_hand):
+                payout = int(bet * 1.5)
+                self.balance += payout
+                results.append(f"Käsi {i+1}: Blackjack! Võitsid {payout}€.")
+            elif val > dealer_val:
+                self.balance += bet * 2
+                results.append(f"Käsi {i+1}: Võitis!")
+            elif val == dealer_val:
+                self.balance += bet
+                results.append(f"Käsi {i+1}: Viik.")
+            else:
+                results.append(f"Käsi {i+1}: Kaotas.")
+
+        self.update_ui()
+        messagebox.showinfo("Tulemused", "\n".join(results))
+
+def main():
+    root = tk.Tk()
+    game = BlackjackGame(root)
+    root.mainloop()
+
+if __name__ == "__main__":
+    main()
