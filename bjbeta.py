@@ -1,4 +1,4 @@
-
+#Autorid: Dmitri Balashov ja Martin Väljari
 import tkinter as tk
 from tkinter import messagebox
 import random
@@ -413,3 +413,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
