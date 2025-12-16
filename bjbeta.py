@@ -3,12 +3,12 @@ import tkinter as tk
 from tkinter import messagebox
 import random
 
-# mõõdud ja default algussaldo
+# mängu akna mõõdud ja default algussaldo
 START_BALANCE = 1000
 CARD_WIDTH, CARD_HEIGHT = 72, 100
 TABLE_WIDTH, TABLE_HEIGHT = 980, 1100
 
-# kaardid
+# kaartide mastid, numbrid ja numbrite väärtused
 suits = ['♥', '♦', '♣', '♠']
 ranks = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A']
 values = {
@@ -16,7 +16,7 @@ values = {
     '10': 10, 'J': 10, 'Q': 10, 'K': 10, 'A': 11
 }
 
-#kaardipakkide loomine
+#kaardipakkide loomine, loob 6tk ja segab suvaliselt ära, hiljem kindla kaartide arvu (meil 20) puhul kasutab uuesti seda funktsiooni
 def create_deck(num_decks=6):
     deck = []
     for _ in range(num_decks):
@@ -30,7 +30,7 @@ def create_deck(num_decks=6):
 def card_value(card):
     return values[card[0]]
 
-#käe väärtus arvestades ässadega
+#käe väärtus arvestades ässadega, automaatselt ässad 11 -> 1 (vajadusel)
 def hand_value(hand):
     total = 0
     aces = 0
@@ -43,18 +43,18 @@ def hand_value(hand):
         aces -= 1
     return total
 
-#blackjacki saamine 
+#blackjacki saamine, vajalik hiljem võitja tuvastamisel
 def is_blackjack(hand):
     return len(hand) == 2 and hand_value(hand) == 21
 
-#kas saab splitida (kui mõlemad on väärt 10 või on samad
+#kas saab splitida (kui mõlemad on väärt 10 või on samad, tegelikkuses kasiinos vist nii ei saa, aga siinkohal aitab testida ja on veidi lõbusam)
 def can_split(hand):
     r1, s1 = hand[0]
     r2, s2 = hand[1]
     tens = ['10', 'J', 'Q', 'K']
     return r1 == r2 or (r1 in tens and r2 in tens)
 
-#mäng ise
+#mäng ise suure klassi näol
 class BlackjackGame:
     def __init__(self, root):
         self.root = root
@@ -74,7 +74,7 @@ class BlackjackGame:
         self.canvas = tk.Canvas(root, width=TABLE_WIDTH, height=TABLE_HEIGHT, bg="#0b5f0b")
         self.canvas.pack()
 
-        #saldo ja panus
+        #saldo ja panuse nupud
         self.balance_text = self.canvas.create_text(TABLE_WIDTH//2, 30, text=f"Saldo: {self.balance}€", fill="white", font=("Arial", 22, "bold"))
         self.bet_label = tk.Label(root, text="Panus:", font=("Arial", 12))
         self.bet_entry = tk.Entry(root, width=8)
@@ -82,14 +82,14 @@ class BlackjackGame:
         self.canvas.create_window(100, TABLE_HEIGHT - 40, window=self.bet_label)
         self.canvas.create_window(170, TABLE_HEIGHT - 40, window=self.bet_entry)
         
-        #algussaldo sisestus
+        #algussaldo sisestamise nupp, default väärtus varem määratud
         self.start_balance_label = tk.Label(root, text="Algussaldo:", font=("Arial", 12))
         self.start_balance_entry = tk.Entry(root, width=8)
         self.start_balance_entry.insert(0, str(START_BALANCE))
         self.canvas.create_window(100, TABLE_HEIGHT - 75, window=self.start_balance_label)
         self.canvas.create_window(170, TABLE_HEIGHT - 75, window=self.start_balance_entry)
 
-        #nupud
+        #nupud, mis mängu akna alumisel poolel asuvad
         self.deal_button = tk.Button(root, text="Jaga kaardid", width=12, command=self.start_round)
         self.hit_button = tk.Button(root, text="Võta kaart", width=12, command=self.hit)
         self.stand_button = tk.Button(root, text="Seisa", width=12, command=self.stand)
@@ -111,7 +111,7 @@ class BlackjackGame:
         self.player_value_text = self.canvas.create_text(TABLE_WIDTH//2, 320, text="", fill="white", font=("Arial", 19, "bold"))
 
         self.update_ui()
-#kaartide võtmine, loomine
+    #kaartide loomine (loob ka diileri peidetud kaardi)
     def draw_card(self, x, y, card, hidden=False, tag="card"):
         rank, suit = card
         if hidden:
@@ -123,12 +123,11 @@ class BlackjackGame:
         self.canvas.create_rectangle(x, y, x + CARD_WIDTH, y + CARD_HEIGHT, fill="white", outline="black", width=2, tags=tag)
         self.canvas.create_text(x + 8, y + 8, anchor="nw", text=f"{rank}{suit}", fill=color, font=("Arial", 14, "bold"), tags=tag)
         self.canvas.create_text(x + CARD_WIDTH - 8, y + CARD_HEIGHT - 8, anchor="se", text=f"{rank}{suit}", fill=color, font=("Arial", 14, "bold"), tags=tag)
-
+    #loob sildid kaartide kõrvale, mis näitavad käe seisu (a la lihtsalt seisab, duubeldas ja seisab jne)
     def update_ui(self):
         self.canvas.delete("card")
         self.canvas.itemconfig(self.balance_text, text=f"Saldo: {self.balance}€")
 
-        #diileri kaardi võtmine
         dx = TABLE_WIDTH // 2
         start_y = 110
         if not self.dealer_hand:
@@ -145,7 +144,6 @@ class BlackjackGame:
             else:
                 self.canvas.itemconfig(self.dealer_value_text, text=f"Diiler: {hand_value(self.dealer_hand)}")
 
-        # mängija kaardi võtmine
         if not self.player_hands:
             self.canvas.itemconfig(self.player_value_text, text="Mängija: -")
             return
@@ -161,7 +159,7 @@ class BlackjackGame:
             start_x = TABLE_WIDTH//2 - (len(hand['cards']) * (CARD_WIDTH + 10)) // 2
             for j, card in enumerate(hand['cards']):
                 self.draw_card(start_x + j*(CARD_WIDTH + 10), y, card)
-            #staatused mängu seisu jaoks
+            #staatused mängu seisu jaoks, vajalik, et neid saaks näidata käe kõrval
             val = hand_value(hand['cards'])
             status = []
             if is_blackjack(hand['cards']):
@@ -254,7 +252,7 @@ class BlackjackGame:
             return
 
         self.balance -= bet
-        #uus pakk kui pakis on vähe kaarte
+        #uus pakk kui pakis on vähe kaarte, eelnevalt mainitud
         if len(self.deck) < 20:  
             self.deck = create_deck()
 
@@ -294,7 +292,7 @@ class BlackjackGame:
         hand = self.player_hands[self.active_hand]
         if hand.get('stood', False):
             return
-
+        #ei lase hitida kui 21 või üle
         hand['cards'].append(self.deck.pop())
         val = hand_value(hand['cards'])
         if val > 21:
@@ -329,7 +327,7 @@ class BlackjackGame:
         hand['stood'] = True
         self.next_hand()
         self.update_ui()
-    #split
+    #split, saab ainult 4 kätt korraga teha
     def split(self):
         if not self.in_round:
             return
@@ -348,7 +346,7 @@ class BlackjackGame:
         c1 = hand['cards'][0]
         c2 = hand['cards'][1]
 
-        #loob kaks uut kätt spliti tagajärjel
+        #loob kaks uut kätt spliti tagajärjel, millest kummaski on esialgse käe üks kaart
         new_hand1 = {'cards': [c1, self.deck.pop()], 'bet': hand['bet']}
         new_hand2 = {'cards': [c2, self.deck.pop()], 'bet': hand['bet']}
 
@@ -357,7 +355,7 @@ class BlackjackGame:
         self.update_ui()
 
     def next_hand(self):
-        #järgmise käe peale edasi, mis splitiga tekkis
+        #järgmise käe peale edasi, mis splitiga tekkis (eelmine peab selle jaoks seisma, ise liikuda ei saa)
         for i in range(self.active_hand + 1, len(self.player_hands)):
             if not self.player_hands[i].get('stood', False) and hand_value(self.player_hands[i]['cards']) <= 21:
                 self.active_hand = i
@@ -402,7 +400,7 @@ class BlackjackGame:
                 results.append(f"Käsi {i+1}: Viik.")
             else:
                 results.append(f"Käsi {i+1}: Kaotas.")
-
+        #viskab ette ka akna, mis näitab tulemust, iga käe kohta eraldi rida (kui on splitiud)
         self.update_ui()
         messagebox.showinfo("Tulemused", "\n".join(results))
 
@@ -413,4 +411,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
